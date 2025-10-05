@@ -27,3 +27,11 @@ Patch 2025-10-05:
 - FIX: frontend voting URL now respects selected collection (`/api/${typeSel}/${id}/vote`).
 - IMPROVE: user token generator uses crypto-strong UUID (Web Crypto API).
 - IMPROVE: server does graceful shutdown, flushing dirty views on SIGINT/SIGTERM.
+
+Patch: server.js refactor — DRY collection endpoints via createCollectionEndpoints(app, store)
+
+
+Patch: unified /api/feed + search & tag filters
+- src/lib/viewStore.js: select(...) now accepts {tag, q} and filters before sort/paginate.
+- src/server.js: new GET /api/feed endpoint; returns { type, items, nextCursor }.
+- public/index.html: list loading now calls /api/feed with type/sort/window/tag/q; added search box and clickable tag pills.

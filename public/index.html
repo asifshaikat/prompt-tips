@@ -18,7 +18,7 @@
 <body>
   <h1>Prompt Tips</h1>
   <p>Tiny lessons. Better prompts.</p>
-  <div class="tabs"><button class="btn" data-type="tips">Tips</button><button class="btn" data-type="prompts">Prompts</button>
+  <input id="searchBox" placeholder="Search..." style="padding:8px;border:1px solid #ddd;border-radius:8px;margin-right:8px"><div class="tabs"><button class="btn" data-type="tips">Tips</button><button class="btn" data-type="prompts">Prompts</button>
     <button data-sort="hot">Hot</button>
     <button data-sort="new">New</button>
     <button data-sort="top">Top</button>
@@ -27,12 +27,15 @@
 
   <script>
     const feed = document.getElementById('feed');
-    let sort = 'hot', windowSel='all', cursor=null, typeSel='tips';
+    let sort = 'hot', windowSel='all', cursor=null, typeSel='tips', activeTag=null, searchQ='';
 
     async function load(reset=true){
-      const url = new URL(`/api/${typeSel}`, location.origin);
+      const url = new URL('/api/feed', location.origin);
+      url.searchParams.set('type', typeSel);
       url.searchParams.set('sort', sort);
       url.searchParams.set('window', windowSel);
+      if(activeTag) url.searchParams.set('tag', activeTag);
+      if(searchQ) url.searchParams.set('q', searchQ);
       if(cursor) url.searchParams.set('cursor', cursor);
       const r = await fetch(url, {headers: {'Accept':'application/json'}});
       const j = await r.json();
@@ -47,6 +50,7 @@
       el.innerHTML = `
         <h3>${escapeHTML(t.title)}</h3>
         <div class="content">${t.content_html ? t.content_html : escapeHTML(t.content).replace(/\n/g,'<br>')}</div>
+        <div class="row tags">${(t.tags||[]).map(tag=>`<button class='btn' data-action='tag' data-tag='${tag}'>#${tag}</button>`).join(' ')}</div>
         <div class="meta">By ${escapeHTML(t.username||"Anon")} • ${new Date(t.created_at).toLocaleString()} • <a href="/tips/${t.id}-${t.slug}">Permalink</a></div>
         <div class="row">
           <button class="btn" data-action="vote" data-id="${t.id}" data-v="1">💙 <span>${t.love_count}</span></button>
@@ -61,6 +65,7 @@
       if(!b) return;
 
       if(b.dataset.type){ typeSel = b.dataset.type; cursor=null; load(true); return; }
+      if(b.dataset.action==='tag'){ activeTag = b.dataset.tag; cursor=null; load(true); return; }
       if(b.dataset.action==='vote'){
         const id = b.dataset.id, v = Number(b.dataset.v);
         const token = getToken();

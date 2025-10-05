@@ -48,10 +48,12 @@ export class ViewStore {
     res.set('Cache-Control', `public, max-age=${this.cacheMaxAge}, stale-while-revalidate=${this.swr}`);
   }
 
-  select({ sort='hot', window='all', cursor=null, limit=20 }){
+  select({ sort='hot', window='all', tag=null, q=null, cursor=null, limit=20 }){
     if(!this.mem) return { items: [], nextCursor: null };
     const since = window==='24h' ? Date.now()-864e5 : window==='7d' ? Date.now()-7*864e5 : window==='30d' ? Date.now()-30*864e5 : 0;
     let items = this.mem.items.filter(x => x.status==='published' && (!since || Date.parse(x.created_at)>=since));
+    if(tag){ items = items.filter(x => (x.tags||[]).includes(String(tag).toLowerCase())); }
+    if(q){ const needle = String(q).toLowerCase().trim(); items = items.filter(x => (x.title+' '+x.content).toLowerCase().includes(needle)); }
     if(sort==='new'){
       items.sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at) || b.id-a.id);
     } else if(sort==='top'){
