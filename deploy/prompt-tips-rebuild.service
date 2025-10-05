@@ -1,4 +1,3 @@
-# deploy/prompt-tips-rebuild.service
 [Unit]
 Description=Rebuild global tips view (double-buffer)
 [Service]

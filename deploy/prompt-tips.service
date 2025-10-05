@@ -1,4 +1,3 @@
-# deploy/prompt-tips.service
 [Unit]
 Description=Prompt Tips server (no-DB)
 After=network.target

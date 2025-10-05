@@ -1,4 +1,3 @@
-# deploy/prompt-tips-rebuild.timer
 [Unit]
 Description=Run tips view rebuild every minute
 [Timer]

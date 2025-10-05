@@ -1,0 +1,10 @@
+- id: 1001
+  title: "Product photo to ad copy"
+  content: |
+    Given an image of a product, write **one sentence** ad copy focusing on benefits, not features.
+    - Tone: playful
+    - Max 20 words
+  tags: ["image","copy"]
+  status: "published"
+  created_at: "2025-01-03T12:00:00Z"
+  username: "PromptMaster"

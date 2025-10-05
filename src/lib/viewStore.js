@@ -3,23 +3,25 @@ import fscb from 'node:fs';
 import path from 'node:path';
 import YAML from 'js-yaml';
 import crypto from 'node:crypto';
-import { atomicWrite, tipPaths, hot, wilson } from './utils.js';
+import { atomicWrite, itemPaths, hot, wilson } from './utils.js';
+import { renderMarkdown } from './markdown.js';
 
 export class ViewStore {
-  constructor({ DATA, cacheMaxAge=60, swr=300 }){
+  constructor({ DATA, collection='tips', cacheMaxAge=60, swr=300 }){
+    this.collection = collection;
     this.DATA = DATA;
     this.cacheMaxAge = cacheMaxAge;
     this.swr = swr;
-    this.mem = null;   // in-memory global view
+    this.mem = null;
     this.ptr = 'a';
     this.flushTimer = null;
-    this.dirty = new Set(); // tip ids needing global patch (micro-batch)
+    this.dirty = new Set();
   }
 
   async init(){
     await fs.mkdir(this.DATA, { recursive: true });
     await fs.mkdir(path.join(this.DATA, '.locks'), { recursive: true });
-    const ptrFile = path.join(this.DATA, 'tips.view.ptr');
+    const ptrFile = path.join(this.DATA, `${this.collection}.view.ptr`);
     try{ this.ptr = (await fs.readFile(ptrFile,'utf8')).trim() || 'a'; }
     catch{ await fs.writeFile(ptrFile,'a'); this.ptr = 'a'; }
     const active = this._activePath();
@@ -31,8 +33,8 @@ export class ViewStore {
     }
   }
 
-  _activePath(){ return path.join(this.DATA, `tips.view.${this.ptr}.json`); }
-  _inactivePath(){ return path.join(this.DATA, `tips.view.${this.ptr==='a'?'b':'a'}.json`); }
+  _activePath(){ return path.join(this.DATA, `${this.collection}.view.${this.ptr}.json`); }
+  _inactivePath(){ return path.join(this.DATA, `${this.collection}.view.${this.ptr==='a'?'b':'a'}.json`); }
 
   etag(){
     try{
@@ -44,12 +46,11 @@ export class ViewStore {
 
   headers(res){
     res.set('Cache-Control', `public, max-age=${this.cacheMaxAge}, stale-while-revalidate=${this.swr}`);
-    res.set('ETag', this.etag());
   }
 
   select({ sort='hot', window='all', cursor=null, limit=20 }){
     if(!this.mem) return { items: [], nextCursor: null };
-    const since = window==='24h' ? Date.now()-864e5 : window==='7d' ? Date.now()-7*864e5 : 0;
+    const since = window==='24h' ? Date.now()-864e5 : window==='7d' ? Date.now()-7*864e5 : window==='30d' ? Date.now()-30*864e5 : 0;
     let items = this.mem.items.filter(x => x.status==='published' && (!since || Date.parse(x.created_at)>=since));
     if(sort==='new'){
       items.sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at) || b.id-a.id);
@@ -77,16 +78,15 @@ export class ViewStore {
   }
 
   async postVote(id, userToken, newVote){
-    const p = tipPaths(this.DATA, id);
+    const p = itemPaths(this.DATA, this.collection, id);
     await fs.mkdir(p.dir, { recursive: true });
 
-    // acquire lock
+    // naive lock
     let lockHandle;
     try { lockHandle = await fs.open(p.lock, 'wx'); }
     catch { throw new Error('Busy, retry'); }
 
     try {
-      // load votes map
       let map = {};
       try { map = JSON.parse(await fs.readFile(p.votesMap,'utf8')); } catch {}
       const oldVote = map[userToken] ?? 0;
@@ -94,29 +94,25 @@ export class ViewStore {
         const tip = await this.getTip(id);
         return { love_count: tip?.love_count ?? 0, meh_count: tip?.meh_count ?? 0 };
       }
-
-      // delta
       const delta = { love: 0, meh: 0 };
       if(oldVote === 1) delta.love--;
       if(oldVote === -1) delta.meh--;
       if(newVote === 1) delta.love++;
       if(newVote === -1) delta.meh++;
 
-      // write map atomically
       map[userToken] = newVote;
       await atomicWrite(fs, p.votesMap, map);
-      // append audit (best-effort)
       await fs.appendFile(p.votesLog, JSON.stringify({ userToken, old: oldVote, vote: newVote, ts: new Date().toISOString() })+'\n').catch(()=>{});
 
-      // patch per-tip view
       let view;
       try { view = JSON.parse(await fs.readFile(p.view,'utf8')); }
       catch {
         const y = YAML.load(await fs.readFile(p.yaml,'utf8'));
         view = {
           id: y.id, slug: slugify(y.title),
-          title: y.title, content: y.content, tags: y.tags || [],
+          title: y.title, content: y.content, content_html: renderMarkdown(y.content), tags: y.tags || [],
           status: y.status, created_at: y.created_at, updated_at: y.updated_at,
+          username: y.username,
           love_count: 0, meh_count: 0
         };
       }
@@ -124,7 +120,6 @@ export class ViewStore {
       view.meh_count  += delta.meh;
       await atomicWrite(fs, p.view, view);
 
-      // patch global in-memory & mark dirty for batch flush
       if(this.mem){
         const idx = this.mem.items.findIndex(x => x.id===Number(id));
         if(idx>=0){
@@ -143,27 +138,23 @@ export class ViewStore {
 
   _scheduleFlush(){
     if(this.flushTimer) return;
-    this.flushTimer = setTimeout(()=> this.flushDirty().catch(console.error), 15000); // 15s micro-batch
+    this.flushTimer = setTimeout(()=> this.flushDirty().catch(console.error), 15000);
   }
 
   async flushDirty(){
     this.flushTimer && clearTimeout(this.flushTimer);
     this.flushTimer = null;
     if(this.dirty.size === 0) return;
-
-    // Rebuild global from current this.mem (lightweight) and swap double-buffer
     const inactive = this._inactivePath();
     const payload = {
       version: 1,
       generated_at: new Date().toISOString(),
       tip_count: this.mem.items.length,
-      sha256_items: this._sha(this.mem.items.map(i=>`${i.id}:${i.created_at}`).sort().join('|')),
-      items: this.mem.items
+      items: this.mem.items.map(it => (it.content_html ? it : { ...it, content_html: renderMarkdown(it.content||'') }))
     };
     await atomicWrite(fs, inactive, payload);
-    // flip pointer
     const nextPtr = this.ptr==='a' ? 'b' : 'a';
-    await fs.writeFile(path.join(this.DATA,'tips.view.ptr'), nextPtr+'\n');
+    await fs.writeFile(path.join(this.DATA,`${this.collection}.view.ptr`), nextPtr+'\n');
     this.ptr = nextPtr;
     this.dirty.clear();
   }
@@ -174,17 +165,16 @@ export class ViewStore {
       version: 1,
       generated_at: new Date().toISOString(),
       tip_count: items.length,
-      sha256_items: this._sha(items.map(i=>`${i.id}:${i.created_at}`).sort().join('|')),
       items
     };
     const inactive = this._inactivePath();
     await atomicWrite(fs, inactive, this.mem);
-    await fs.writeFile(path.join(this.DATA,'tips.view.ptr'), (this.ptr==='a'?'b':'a')+'\n');
+    await fs.writeFile(path.join(this.DATA,`${this.collection}.view.ptr`), (this.ptr==='a'?'b':'a')+'\n');
     this.ptr = (this.ptr==='a'?'b':'a');
   }
 
   async _readAllPerTipViews(){
-    const tipsDir = path.join(this.DATA,'tips');
+    const tipsDir = path.join(this.DATA,this.collection);
     let items = [];
     let shards = [];
     try { shards = await fs.readdir(tipsDir); } catch { return []; }
@@ -196,14 +186,15 @@ export class ViewStore {
         if(!file.endsWith('.view.json')) continue;
         try{
           const obj = JSON.parse(await fs.readFile(path.join(dir,file),'utf8'));
-          if(obj.status === 'published') items.push(obj);
+          if(obj.status === 'published') {
+            if(!obj.content_html && obj.content){ obj.content_html = renderMarkdown(obj.content); }
+            items.push(obj);
+          }
         }catch{}
       }
     }
     return items;
   }
-
-  _sha(s){ return crypto.createHash('sha256').update(s).digest('hex'); }
 }
 
 function slugify(t){ return String(t).toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''); }

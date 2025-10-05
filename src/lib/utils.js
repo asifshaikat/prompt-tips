@@ -30,15 +30,24 @@ export function wilson(love, meh, z=1.96){
   return num/denom;
 }
 
-export function seekFilter(items, cursor){
-  if(!cursor) return items;
-  const [iso, idStr] = cursor.split('_');
-  const cAt = Date.parse(iso); const cId = Number(idStr);
-  return items.filter(x => Date.parse(x.created_at) < cAt || (Date.parse(x.created_at)===cAt && x.id < cId));
-}
-
 export async function atomicWrite(fs, file, obj){
   const tmp = `${file}.tmp`;
   await fs.writeFile(tmp, typeof obj==='string'? obj : JSON.stringify(obj));
   await fs.rename(tmp, file);
+}
+
+
+export function itemPaths(DATA, collection, id){
+  const s = shard(id);
+  const name = collection === 'prompts' ? 'prompt' : 'tip';
+  const dir = `${DATA}/${collection}/${s}`;
+  const base = `${dir}/${name}-${String(id).padStart(6,'0')}`;
+  return {
+    dir,
+    yaml: `${base}.yaml`,
+    view: `${base}.view.json`,
+    votesMap: `${base}.votes.map.json`,
+    votesLog: `${base}.votes.log.jsonl`,
+    lock: `${DATA}/.locks/${name}-${id}.lock`
+  };
 }

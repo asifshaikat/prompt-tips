@@ -1,0 +1,29 @@
+Prompts support added (Markdown + username uniqueness).
+
+Changed:
+- src/lib/utils.js: new itemPaths(DATA, collection, id)
+- src/lib/viewStore.js: generalized for collection ('tips' or 'prompts')
+- src/server.js: new promptsStore; endpoints:
+    GET  /api/prompts
+    GET  /api/prompts/:id
+    POST /api/prompts/:id/vote
+    POST /api/prompts   (create; Markdown; username carried through)
+- scripts/seed.mjs: optional prompts seeding from data/seeds/prompts.seed.yaml
+- scripts/admin.mjs: now supports --type tips|prompts
+- public/index.html: UI tabs to switch Tips/Prompts
+
+Deploy now:
+  cd /opt/prompt-tips
+  sudo -u www-data npm install --omit=dev
+  sudo -u www-data mkdir -p /var/lib/prompt-tips/data/seeds
+  sudo cp -f data/seeds/*.yaml /var/lib/prompt-tips/data/seeds/ || true
+  sudo -u www-data DATA_DIR=/var/lib/prompt-tips/data npm run seed
+  sudo -u www-data DATA_DIR=/var/lib/prompt-tips/data npm run rebuild
+  sudo systemctl restart prompt-tips
+
+
+Patch 2025-10-05:
+- FIX: seeds YAML now uses block scalars (|) for multi-line content.
+- FIX: frontend voting URL now respects selected collection (`/api/${typeSel}/${id}/vote`).
+- IMPROVE: user token generator uses crypto-strong UUID (Web Crypto API).
+- IMPROVE: server does graceful shutdown, flushing dirty views on SIGINT/SIGTERM.

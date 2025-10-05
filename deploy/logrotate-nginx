@@ -1,4 +1,3 @@
-# deploy/logrotate-nginx
 /var/log/nginx/*.log {
     daily
     missingok

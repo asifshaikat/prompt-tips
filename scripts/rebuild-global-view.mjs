@@ -1,13 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import crypto from 'node:crypto';
 
 const DATA = process.env.DATA_DIR || path.join(process.cwd(),'data');
 const PTR = path.join(DATA,'tips.view.ptr');
 const A = path.join(DATA,'tips.view.a.json');
 const B = path.join(DATA,'tips.view.b.json');
-
-function sha(s){ return crypto.createHash('sha256').update(s).digest('hex'); }
 
 async function atomicWrite(file, obj){
   const tmp = file + '.tmp';
@@ -41,13 +38,7 @@ async function writePtr(v){ await fs.writeFile(PTR, v+'\n'); }
 async function main(){
   await fs.mkdir(DATA, { recursive: true });
   const items = await listPerTip();
-  const payload = {
-    version: 1,
-    generated_at: new Date().toISOString(),
-    tip_count: items.length,
-    sha256_items: sha(items.map(i=>`${i.id}:${i.created_at}`).sort().join('|')),
-    items
-  };
+  const payload = { version: 1, generated_at: new Date().toISOString(), tip_count: items.length, items };
   const cur = await readPtr();
   const target = cur==='a' ? B : A;
   await atomicWrite(target, payload);
