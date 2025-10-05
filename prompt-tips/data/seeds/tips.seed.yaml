@@ -1,0 +1,27 @@
+- id: 1
+  title: "Be explicit about output format"
+  content: "Ask for JSON with a schema or a bullet list with exact fields. Models follow structure better than vague requests."
+  tags: ["format","json"]
+  status: "published"
+  created_at: "2025-01-01T09:00:00Z"
+
+- id: 2
+  title: "Few-shot to set pattern"
+  content: "Give 2–3 short examples of input→output. Then write: 'Now continue with the same style on: <your input>'."
+  tags: ["fewshot","style"]
+  status: "published"
+  created_at: "2025-01-02T10:00:00Z"
+
+- id: 3
+  title: "Constrain length"
+  content: "Use hard caps: '≤120 words', '3 bullets max', or 'One sentence only'."
+  tags: ["brevity"]
+  status: "published"
+  created_at: "2025-01-03T10:00:00Z"
+
+- id: 4
+  title: "Name the audience"
+  content: "Specify who it's for: 'for a 10-year-old', 'for CTOs', or 'for HR managers'—it shifts tone and detail."
+  tags: ["audience"]
+  status: "published"
+  created_at: "2025-01-04T10:00:00Z"

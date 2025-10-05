@@ -1,0 +1,9 @@
+# deploy/prompt-tips-rebuild.service
+[Unit]
+Description=Rebuild global tips view (double-buffer)
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/opt/prompt-tips
+Environment=DATA_DIR=/var/lib/prompt-tips/data
+ExecStart=/usr/bin/node scripts/rebuild-global-view.mjs

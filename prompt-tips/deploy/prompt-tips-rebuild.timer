@@ -1,0 +1,9 @@
+# deploy/prompt-tips-rebuild.timer
+[Unit]
+Description=Run tips view rebuild every minute
+[Timer]
+OnCalendar=*:0/1
+Persistent=true
+Unit=prompt-tips-rebuild.service
+[Install]
+WantedBy=timers.target

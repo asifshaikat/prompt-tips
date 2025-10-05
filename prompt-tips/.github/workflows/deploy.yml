@@ -1,0 +1,33 @@
+name: deploy
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Known hosts
+        run: ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Remote deploy (git pull, build, restart)
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} bash -s << 'EOF'
+          set -euo pipefail
+          cd /opt/prompt-tips
+          git fetch --all
+          git reset --hard origin/main
+          export DATA_DIR=/var/lib/prompt-tips/data
+          npm ci --omit=dev || npm install --omit=dev
+          npm run rebuild
+          systemctl restart prompt-tips
+          nginx -t && systemctl reload nginx
+          EOF
