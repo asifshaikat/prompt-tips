@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Prompt Tips</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Noto Sans",Arial;max-width:780px;margin:40px auto;padding:0 16px}
+    .tabs{display:flex;gap:8px;margin-bottom:16px}
+    .tabs button{padding:8px 12px;border:1px solid #ddd;background:#fff;cursor:pointer;border-radius:8px}
+    .card{border:1px solid #eee;border-radius:12px;padding:12px 14px;margin:12px 0}
+    .meta{font-size:12px;color:#666;margin-top:6px}
+    .row{display:flex;align-items:center;gap:8px;margin-top:8px}
+    .btn{border:1px solid #ddd;background:#fafafa;border-radius:8px;padding:6px 10px;cursor:pointer}
+  </style>
+</head>
+<body>
+  <h1>Prompt Tips</h1>
+  <p>Tiny lessons. Better prompts.</p>
+  <div class="tabs">
+    <button data-sort="hot">Hot</button>
+    <button data-sort="new">New</button>
+    <button data-sort="top">Top</button>
+  </div>
+  <div id="feed"></div>
+
+  <script>
+    const feed = document.getElementById('feed');
+    let sort = 'hot', windowSel='all', cursor=null;
+
+    async function load(reset=true){
+      const url = new URL('/api/tips', location.origin);
+      url.searchParams.set('sort', sort);
+      url.searchParams.set('window', windowSel);
+      if(cursor) url.searchParams.set('cursor', cursor);
+      const r = await fetch(url, {headers: {'Accept':'application/json'}});
+      const j = await r.json();
+      if(reset) feed.innerHTML = '';
+      j.items.forEach(renderCard);
+      cursor = j.nextCursor;
+    }
+
+    function renderCard(t){
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerHTML = `
+        <h3>${escapeHTML(t.title)}</h3>
+        <p>${escapeHTML(t.content).replace(/\n/g,'<br>')}</p>
+        <div class="meta">${new Date(t.created_at).toLocaleString()} • <a href="/tips/${t.id}-${t.slug}">Permalink</a></div>
+        <div class="row">
+          <button class="btn" data-action="vote" data-id="${t.id}" data-v="1">💙 <span>${t.love_count}</span></button>
+          <button class="btn" data-action="vote" data-id="${t.id}" data-v="-1">😑 <span>${t.meh_count}</span></button>
+          <button class="btn" data-action="share" data-id="${t.id}" data-slug="${t.slug}">Share</button>
+        </div>`;
+      feed.appendChild(el);
+    }
+
+    document.body.addEventListener('click', async (e)=>{
+      const b = e.target.closest('button');
+      if(!b) return;
+
+      if(b.dataset.action==='vote'){
+        const id = b.dataset.id, v = Number(b.dataset.v);
+        const token = localStorage.getItem('user_token') || (localStorage.setItem('user_token','u_'+cryptoRandom()), localStorage.getItem('user_token'));
+        // optimistic
+        const spans = b.parentElement.querySelectorAll('span');
+        const loveSpan = spans[0], mehSpan = spans[1];
+        const oldLove = Number(loveSpan.textContent), oldMeh = Number(mehSpan.textContent);
+        if(v===1) loveSpan.textContent = oldLove+1; else if(v===-1) mehSpan.textContent = oldMeh+1;
+        try{
+          const r = await fetch(`/api/tips/${id}/vote`,{
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ vote: v, userToken: token })
+          });
+          const j = await r.json();
+          if(j && typeof j.love_count==='number'){
+            loveSpan.textContent = j.love_count;
+            mehSpan.textContent = j.meh_count;
+          } else throw new Error('bad response');
+        }catch(_){
+          loveSpan.textContent = oldLove; mehSpan.textContent = oldMeh;
+          alert('Vote failed, please retry.');
+        }
+      }
+      if(b.dataset.action==='share'){
+        const id = b.dataset.id, slug = b.dataset.slug;
+        const link = `${location.origin}/tips/${id}-${slug}`;
+        try{ await navigator.clipboard.writeText(link); alert('Link copied!'); }
+        catch{ prompt('Copy link:', link); }
+      }
+      if(b.parentElement?.classList.contains('tabs')){
+        sort = b.dataset.sort; cursor = null; load(true);
+      }
+    });
+
+    function escapeHTML(s){return s.replace(/[&<>"']/g, m=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]))}
+    function cryptoRandom(){return Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2)}
+    load(true);
+  </script>
+</body>
+</html>

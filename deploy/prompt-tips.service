@@ -1,0 +1,22 @@
+# deploy/prompt-tips.service
+[Unit]
+Description=Prompt Tips server (no-DB)
+After=network.target
+
+[Service]
+Type=simple
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATA_DIR=/var/lib/prompt-tips/data
+Environment=CACHE_MAX_AGE=60
+Environment=STALE_WHILE_REVALIDATE=300
+WorkingDirectory=/opt/prompt-tips
+ExecStart=/usr/bin/node /opt/prompt-tips/src/server.js
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
